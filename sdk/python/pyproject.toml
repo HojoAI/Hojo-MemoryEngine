@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "memory-engine-sdk"
+version = "0.5.0"
+description = "Memory Engine Python SDK"
+authors = ["Memory Engine Team"]
+packages = [{ include = "memory_engine_sdk", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+httpx = "^0.28.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

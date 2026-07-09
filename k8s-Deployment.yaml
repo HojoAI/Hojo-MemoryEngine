@@ -1,0 +1,279 @@
+# MemoryEngine — API + Dashboard（K8s 单文件部署）
+# 两个 Deployment 共用同一镜像 ${IMAGE_URL}，由 MEMORY_ENGINE_ROLE 区分进程
+# 示例：
+#   export IMAGE_URL=... APP_NAME=... NAMESPACE=...
+#   export API_INGRESS_HOST=api.memory-engine.example.com
+#   export DASHBOARD_INGRESS_HOST=dashboard.memory-engine.example.com
+#   export VITE_API_BASE_URL=https://api.memory-engine.example.com
+#   export INGRESS_TLS_SECRET=ingress-tls
+#   envsubst < k8s-Deployment.yaml | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: ${APP_NAME}
+    component: api
+spec:
+  replicas: ${REPLICAS}
+  selector:
+    matchLabels:
+      app: ${APP_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${APP_NAME}
+        component: api
+    spec:
+      containers:
+        - name: ${APP_NAME}
+          image: ${IMAGE_URL}
+          imagePullPolicy: Always
+          env:
+            - name: MEMORY_ENGINE_ROLE
+              value: api
+            - name: PORT
+              value: "6030"
+            - name: APP_DEBUG
+              value: "false"
+            - name: APP_DISABLE_AUTH
+              value: "false"
+            - name: KAFKA_CONSUMERS_ENABLED
+              value: "${KAFKA_CONSUMERS_ENABLED}"
+            - name: MYSQL_HOST
+              value: "${MYSQL_HOST}"
+            - name: MYSQL_PORT
+              value: "${MYSQL_PORT}"
+            - name: MYSQL_USER
+              value: "${MYSQL_USER}"
+            - name: MYSQL_PASSWORD
+              value: "${MYSQL_PASSWORD}"
+            - name: MYSQL_DATABASE
+              value: "${MYSQL_DATABASE}"
+            - name: REDIS_URL
+              value: "${REDIS_URL}"
+            - name: REDIS_PORT
+              value: "${REDIS_PORT}"
+            - name: REDIS_PASSWORD
+              value: "${REDIS_PASSWORD}"
+            - name: REDIS_DATABASE
+              value: "${REDIS_DATABASE}"
+            - name: MONGODB_URI
+              value: "${MONGODB_URI}"
+            - name: MONGODB_USER
+              value: "${MONGODB_USER}"
+            - name: MONGODB_PASSWORD
+              value: "${MONGODB_PASSWORD}"
+            - name: MONGODB_AUTH_SOURCE
+              value: "${MONGODB_AUTH_SOURCE}"
+            - name: MONGODB_DATABASE
+              value: "${MONGODB_DATABASE}"
+            - name: QDRANT_URL
+              value: "${QDRANT_URL}"
+            - name: OPENAI_BASE_URL
+              value: "${OPENAI_BASE_URL}"
+            - name: OPENAI_API_KEY
+              value: "${OPENAI_API_KEY}"
+            - name: OPENAI_MODEL
+              value: "${OPENAI_MODEL}"
+            - name: OPENAI_REQUEST_TIMEOUT_SECONDS
+              value: "${OPENAI_REQUEST_TIMEOUT_SECONDS}"
+            - name: KAFKA_PUBLISH_ENABLED
+              value: "${KAFKA_PUBLISH_ENABLED}"
+            - name: SCHEMA_SYNC_API_PUBLISH
+              value: "${SCHEMA_SYNC_API_PUBLISH}"
+            # End-user token auth (/api/v1/data/user/*)
+            - name: USER_TOKEN_SKIP_VALIDATE
+              value: "${USER_TOKEN_SKIP_VALIDATE}"
+            - name: USER_TOKEN_REDIS_KEY_TEMPLATE
+              value: "${USER_TOKEN_REDIS_KEY_TEMPLATE}"
+            - name: USER_ACCOUNT_VALIDATE_URL
+              value: "${USER_ACCOUNT_VALIDATE_URL}"
+            - name: END_USER_DEFAULT_TENANT_ID
+              value: "${END_USER_DEFAULT_TENANT_ID}"
+            - name: END_USER_DEFAULT_ORG_ID
+              value: "${END_USER_DEFAULT_ORG_ID}"
+            - name: SMTP_HOST
+              value: "${SMTP_HOST}"
+            - name: SMTP_PORT
+              value: "${SMTP_PORT}"
+            - name: SMTP_USER
+              value: "${SMTP_USER}"
+            - name: SMTP_PASSWORD
+              value: "${SMTP_PASSWORD}"
+            - name: SMTP_FROM
+              value: "${SMTP_FROM}"
+            - name: SMTP_USE_TLS
+              value: "${SMTP_USE_TLS}"
+            - name: MEMORY_EXPORT_EMAIL_MAX_ITEMS
+              value: "${MEMORY_EXPORT_EMAIL_MAX_ITEMS}"
+          ports:
+            - containerPort: 6030
+              name: http-6030
+              protocol: TCP
+          resources:
+            limits:
+              cpu: ${CPU_LIMIT}
+              memory: ${MEMORY_LIMIT}
+            requests:
+              cpu: ${CPU_REQUEST}
+              memory: ${MEMORY_REQUEST}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 6030
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 6030
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${APP_NAME}-svc
+  namespace: ${NAMESPACE}
+  labels:
+    app: ${APP_NAME}
+spec:
+  type: ClusterIP
+  internalTrafficPolicy: Cluster
+  sessionAffinity: None
+  selector:
+    app: ${APP_NAME}
+  ports:
+    - name: http
+      port: 6030
+      protocol: TCP
+      targetPort: 6030
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ${APP_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: ${APP_NAME}
+  annotations:
+    nginx.ingress.kubernetes.io/service-weight: ''
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ${API_INGRESS_HOST}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ${APP_NAME}-svc
+                port:
+                  number: 6030
+  tls:
+    - hosts:
+        - ${API_INGRESS_HOST}
+      secretName: ${INGRESS_TLS_SECRET}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DASHBOARD_APP_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: ${DASHBOARD_APP_NAME}
+    component: dashboard
+spec:
+  replicas: ${DASHBOARD_REPLICAS}
+  selector:
+    matchLabels:
+      app: ${DASHBOARD_APP_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${DASHBOARD_APP_NAME}
+        component: dashboard
+    spec:
+      containers:
+        - name: ${DASHBOARD_APP_NAME}
+          image: ${IMAGE_URL}
+          imagePullPolicy: Always
+          env:
+            - name: MEMORY_ENGINE_ROLE
+              value: dashboard
+            - name: VITE_API_BASE_URL
+              value: "${VITE_API_BASE_URL}"
+            - name: VITE_APISIX_URL
+              value: "${VITE_APISIX_URL}"
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            limits:
+              cpu: ${DASHBOARD_CPU_LIMIT}
+              memory: ${DASHBOARD_MEMORY_LIMIT}
+            requests:
+              cpu: ${DASHBOARD_CPU_REQUEST}
+              memory: ${DASHBOARD_MEMORY_REQUEST}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${DASHBOARD_APP_NAME}-svc
+  namespace: ${NAMESPACE}
+  labels:
+    app: ${DASHBOARD_APP_NAME}
+spec:
+  type: ClusterIP
+  selector:
+    app: ${DASHBOARD_APP_NAME}
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ${DASHBOARD_APP_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app: ${DASHBOARD_APP_NAME}
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ${DASHBOARD_INGRESS_HOST}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ${DASHBOARD_APP_NAME}-svc
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - ${DASHBOARD_INGRESS_HOST}
+      secretName: ${INGRESS_TLS_SECRET}
+# Worker（Temporal）默认不部署，见 backend/README.md

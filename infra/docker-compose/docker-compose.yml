@@ -1,0 +1,103 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  temporal-postgresql:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    ports:
+      - "5433:5432"
+    volumes:
+      - temporal_pg_data:/var/lib/postgresql/data
+
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    depends_on:
+      - temporal-postgresql
+    ports:
+      - "7233:7233"
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgresql
+
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    depends_on:
+      - temporal
+    ports:
+      - "8088:8080"
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+
+  etcd:
+    image: bitnami/etcd:3.5
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+    ports:
+      - "2379:2379"
+
+  apisix:
+    image: apache/apisix:3.11.0-debian
+    depends_on:
+      - etcd
+    ports:
+      - "9080:9080"
+      - "9091:9091"
+    volumes:
+      - ../apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ../apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  canal-server:
+    image: canal/canal-server:v1.1.7
+    depends_on:
+      - kafka
+    ports:
+      - "11111:11111"
+    environment:
+      canal.destinations: memory-engine
+      canal.instance.master.address: ${CANAL_MYSQL_HOST:-host.docker.internal}:${CANAL_MYSQL_PORT:-3306}
+      canal.instance.dbUsername: ${CANAL_MYSQL_USER:-root}
+      canal.instance.dbPassword: ${CANAL_MYSQL_PASSWORD:-}
+      canal.instance.connectionCharset: UTF-8
+      canal.instance.tsdb.enable: "true"
+      canal.instance.gtidon: "false"
+      canal.instance.filter.regex: ${CANAL_FILTER_REGEX:-memory_engine\\.memory_field,memory_engine\\.parse_rule,memory_engine\\.retrieve_rule,memory_engine\\.call_rule,memory_engine\\.capability_registry}
+      canal.mq.servers: kafka:9092
+      canal.mq.topic: ${KAFKA_CANAL_TOPIC:-canal-memory-engine}
+      canal.mq.flatMessage: "true"
+      canal.serverMode: kafka
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  temporal_pg_data:

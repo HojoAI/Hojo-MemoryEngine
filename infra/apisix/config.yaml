@@ -1,0 +1,24 @@
+apisix:
+  node_listen: 9080
+  enable_ipv6: false
+
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+
+etcd:
+  host:
+    - "http://etcd:2379"
+  prefix: "/apisix"
+  timeout: 30
+
+plugin_attr:
+  prometheus:
+    export_addr:
+      ip: "0.0.0.0"
+      port: 9091
+
+nginx_config:
+  error_log: "/dev/stderr"
+  error_log_level: "warn"

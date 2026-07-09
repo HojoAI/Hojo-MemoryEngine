@@ -1,0 +1,44 @@
+# APISIX standalone routes for MemoryEngine (dev)
+# Upstream: host.docker.internal:6030 when API runs on host
+
+routes:
+  - uri: /api/*
+    name: memory-engine-api
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.docker.internal:6030": 1
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/(.*)", "/api/$1"]
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers: "Authorization,Content-Type,X-Tenant-Id,X-Org-Id,X-User-Id,X-Admin-Secret"
+      limit-req:
+        rate: 1000
+        burst: 500
+        key: remote_addr
+      # 二级鉴权：转发至 FastAPI /api/v1/internal/auth/validate 校验 API Key
+      forward-auth:
+        uri: "http://host.docker.internal:6030/api/v1/internal/auth/validate"
+        request_headers: ["Authorization"]
+        upstream_headers: ["X-Tenant-Id", "X-Org-Id", "X-User-Id"]
+        client_headers: ["Authorization"]
+
+  - uri: /health
+    name: memory-engine-health
+    upstream:
+      type: roundrobin
+      nodes:
+        "host.docker.internal:6030": 1
+
+#Consumers:
+#  - username: memory-engine-key-auth
+#    plugins:
+#      key-auth:
+#        key: ${MOS_API_KEY}
+
+global_rules: []
+
+#END
