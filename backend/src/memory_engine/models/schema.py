@@ -42,6 +42,11 @@ class MemoryField(Base, AuditMixin):
         nullable=False,
         default="api",
     )
+    json_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False, default="1.0")
+    update_policy_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    access_policy_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    retrieval_policy_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class CapabilityRegistry(Base, AuditMixin):

@@ -12,7 +12,7 @@
 ```bash
 cd sdk/java
 mvn -q clean package
-# 产物：target/memory-engine-sdk-0.5.0.jar
+# 产物：target/memory-engine-sdk-0.6.0.jar
 ```
 
 ## 配置
@@ -22,6 +22,7 @@ mvn -q clean package
 | 变量 | 说明 | 默认 |
 |------|------|------|
 | `MEMORY_ENGINE_API_BASE` | API 根路径 | `http://127.0.0.1:6030/api/v1` |
+| `MEMORY_ENGINE_API_V2_BASE` | 可选的 V2 根路径 | 由 V1 路径推导 `/api/v2` |
 | `MEMORY_ENGINE_API_KEY` | Bearer Token（完整密钥，**必填**） | — |
 | `MEMORY_ENGINE_API_KEY_PREFIX` | 可选；未设置时由完整 Key 前 16 字符推导 | — |
 | `MEMORY_ENGINE_TENANT_ID` / `MEMORY_ENGINE_ORG_ID` | 租户与组织 | `1` / `0` |
@@ -30,6 +31,10 @@ mvn -q clean package
 | `MEMORY_ENGINE_PARSE_TIMEOUT` | `Data.parse` 超时（秒） | `max(HTTP, 180)` |
 
 `Data.parse` / `Data.get(schema)` 默认使用当前 Key 的 **`memory_user_id`**（`GET /onboarding/session`）作为 Mongo/Qdrant 分区，一般无需再传 `user_id`。`userId` 非空时覆盖该默认值（`parse(..., userId)`、`get(schema, userId)`、`get(schema, userId, rule)`）。
+
+## V2 原子会议记忆
+
+V2 会议记忆使用 `mos.memory()` 调用 `ingest`、`retrieve`、`call`、`history`、`revoke` 和 `resolve`，接口返回带来源的 Claim 与 Bundle。接口说明见 [V2 Claim API](../../backend/docs/MEMORY_CLAIMS_V2.md)。
 
 ## 快速开始
 
@@ -87,6 +92,6 @@ public class Example {
 <dependency>
   <groupId>com.memoryengine</groupId>
   <artifactId>memory-engine-sdk</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
 </dependency>
 ```

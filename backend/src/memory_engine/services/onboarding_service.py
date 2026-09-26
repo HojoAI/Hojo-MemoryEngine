@@ -114,7 +114,7 @@ async def get_profile_by_supabase(
         )
     ).scalar_one_or_none()
     if not user:
-        raise NotFoundError("Memory Engine user not linked; apply for an API key first")
+        raise NotFoundError("MemoryEngine user not linked; apply for an API key first")
 
     tenant = (
         await session.execute(select(Tenant).where(Tenant.id == user.tenant_id, Tenant.deleted == 0))

@@ -6,6 +6,21 @@ from memory_engine_sdk.credentials import MemoryEngineConfigError, memory_user_i
 from memory_engine_sdk.enums import PARSERULEENUM, RETRIEVEENUM, SEARCHENUM, WRITERULE
 from memory_engine_sdk.models import LLM, MergeRule, ParseInput, ParseRule, Prompt, RetrieveRule
 
+from memory_engine_sdk.memory_v2 import (
+    Memory,
+    MemoryAccessPolicy,
+    MemoryBundle,
+    MemoryBundleItem,
+    MemoryCurrentClaim,
+    MemoryCurrentContext,
+    MemoryClaim,
+    MemoryIngestResult,
+    MemoryNamespace,
+    MemorySourceEvent,
+    MemoryUpdateDecision,
+    MemoryUsageContext,
+)
+
 __all__ = [
     "Schema",
     "Data",
@@ -23,4 +38,16 @@ __all__ = [
     "Prompt",
     "MemoryEngineConfigError",
     "memory_user_id",
+    "Memory",
+    "MemoryNamespace",
+    "MemoryAccessPolicy",
+    "MemorySourceEvent",
+    "MemoryClaim",
+    "MemoryUsageContext",
+    "MemoryUpdateDecision",
+    "MemoryIngestResult",
+    "MemoryBundleItem",
+    "MemoryBundle",
+    "MemoryCurrentClaim",
+    "MemoryCurrentContext",
 ]

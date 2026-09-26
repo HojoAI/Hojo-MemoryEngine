@@ -9,12 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from memory_engine.config import get_settings
 from memory_engine.core.context import RequestContext
 from memory_engine.core.exceptions import ValidationError
+from memory_engine.db.session import release_db_connection
 from memory_engine.integrations import llm_client
 from memory_engine.models.schema import CapabilityRegistry
 from memory_engine.services import billing_service, rules as rule_service
 from memory_engine.services.memory_parse import (
     _is_nullish_scalar,
     _resolve_parse_llm,
+    log_runtime_monitor,
     parse_system_message,
     strip_llm_markdown_fence,
 )
@@ -38,12 +40,14 @@ def apply_merge_prompt_template(
     field: str,
     old_value: str,
     new_value: str,
+    language: str = "en-US",
 ) -> str:
     """Substitute ``{field}``, ``{old_value}``, ``{new_value}`` in merge prompt."""
     return (
         template.replace("{field}", field)
         .replace(MERGE_PROMPT_SLOT_OLD, old_value)
         .replace(MERGE_PROMPT_SLOT_NEW, new_value)
+        .replace("{language}", language)
     )
 
 
@@ -71,6 +75,7 @@ async def merge_with_rule(
     old_value: Any,
     new_value: Any,
     rule_name: str,
+    language: str,
 ) -> Any:
     """Fuse old and new memory via LLM merge rule; fallback to new_value."""
     row = await rule_service.get_active_merge(session, ctx, memory_field_name, rule_name)
@@ -100,15 +105,32 @@ async def merge_with_rule(
         field=memory_field_name,
         old_value=old_text,
         new_value=new_text,
+        language=language,
     )
     model, base_url, api_key, llm_params = _resolve_parse_llm(cfg)
     settings = get_settings()
     model = model or settings.openai_model
     output_format = cfg.get("output_format", "text")
+    system_message = parse_system_message(cfg, output_format=output_format)
+
+    log_runtime_monitor(
+        "记忆融合 · 调用 LLM 前",
+        [
+            ("输出语言", language),
+            ("已有内容 old_value", old_value),
+            ("新解析内容 new_value", new_value),
+            ("模型名称", model),
+            ("温度 temperature", llm_params.get("temperature", "（未设置，使用模型默认）")),
+            ("其他 llm_params", llm_params or "（无）"),
+            ("系统提示词 system", system_message or "（无）"),
+            ("融合提示词 prompt", user_prompt),
+        ],
+    )
+    await release_db_connection(session)
 
     raw, pt, ct = await llm_client.chat_completion(
         user_prompt,
-        system=parse_system_message(cfg, output_format=output_format),
+        system=system_message,
         base_url=base_url,
         api_key=api_key,
         model=model,
@@ -119,4 +141,13 @@ async def merge_with_rule(
     )
 
     merged = normalize_llm_merge_output(raw)
-    return merged if merged is not None else new_value
+    result = merged if merged is not None else new_value
+    log_runtime_monitor(
+        "记忆融合 · 调用 LLM 后",
+        [
+            ("prompt_tokens", pt),
+            ("completion_tokens", ct),
+            ("融合后整合结果", result),
+        ],
+    )
+    return result

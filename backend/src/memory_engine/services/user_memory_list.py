@@ -1,6 +1,7 @@
 """User memory list/detail backed by memory_data (same granularity as list-all)."""
 
 from datetime import datetime
+from typing import Any
 
 from memory_engine.core.context import RequestContext
 from memory_engine.core.user_api_errors import UserApiError
@@ -127,3 +128,55 @@ async def get_user_memory_item_detail(
     if doc is None:
         raise UserApiError("NOT_FOUND", "记忆不存在")
     return build_item_detail_out(doc)
+
+
+async def update_user_memory_item(
+    session: AsyncSession | None,
+    ctx: RequestContext,
+    user_id: str,
+    item_id: str,
+    content: str,
+) -> UserMemoryItemDetailOut:
+    """Overwrite content of one memory_data row (item_id = ``_id``)."""
+    _ = session
+    normalized_id = (item_id or "").strip()
+    text = (content or "").strip()
+    if not normalized_id:
+        raise UserApiError("ILLEGAL_ARGUMENT", "itemId 不能为空")
+    if not text:
+        raise UserApiError("ILLEGAL_ARGUMENT", "content 不能为空")
+
+    doc = await mongo_store.update_memory_data_value_by_id(
+        ctx.tenant_id,
+        ctx.org_id,
+        user_id,
+        normalized_id,
+        text,
+        original_expression=text,
+    )
+    if doc is None:
+        raise UserApiError("NOT_FOUND", "记忆不存在")
+    return build_item_detail_out(doc)
+
+
+async def delete_user_memory_item(
+    session: AsyncSession | None,
+    ctx: RequestContext,
+    user_id: str,
+    item_id: str,
+) -> dict[str, Any]:
+    """Soft-delete one memory_data row (item_id = ``_id``)."""
+    _ = session
+    normalized_id = (item_id or "").strip()
+    if not normalized_id:
+        raise UserApiError("ILLEGAL_ARGUMENT", "itemId 不能为空")
+
+    doc = await mongo_store.soft_delete_memory_data_by_id(
+        ctx.tenant_id,
+        ctx.org_id,
+        user_id,
+        normalized_id,
+    )
+    if doc is None:
+        raise UserApiError("NOT_FOUND", "记忆不存在")
+    return {"itemId": normalized_id, "deleted": True}

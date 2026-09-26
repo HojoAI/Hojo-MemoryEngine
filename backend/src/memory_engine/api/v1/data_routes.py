@@ -15,6 +15,7 @@ from memory_engine.schemas.memory_field import (
     DataRetrieveRequest,
     MemoryDataCreate,
     MemoryDataUpdate,
+    MemoryMarkUsedRequest,
     UserMemoryExportEmailRequest,
 )
 from memory_engine.services import memory_data as data_service
@@ -53,14 +54,25 @@ async def data_update(
     return ApiResponse(data=out)
 
 
+@router.post("/mark-used", response_model=ApiResponse)
+async def data_mark_used(
+    body: MemoryMarkUsedRequest,
+    session: AsyncSession = Depends(get_db),
+    ctx: RequestContext = Depends(require_permission("data:update")),
+) -> ApiResponse:
+    """Record the source context in which a memory item was used."""
+    return ApiResponse(data=await data_service.mark_used(session, ctx, body))
+
+
 @router.post("/delete", response_model=ApiResponse)
 async def data_delete(
     user_id: str,
     memory_field_name: str,
+    source: str | None = None,
     session: AsyncSession = Depends(get_db),
     ctx: RequestContext = Depends(require_permission("data:delete")),
 ) -> ApiResponse:
-    await data_service.delete_soft(session, ctx, user_id, memory_field_name)
+    await data_service.delete_soft(session, ctx, user_id, memory_field_name, source=source)
     return ApiResponse(message="deleted")
 
 
@@ -70,11 +82,12 @@ async def data_get(
     memory_field_name: str,
     mode: SearchMode = SearchMode.EXACT,
     query: str = "",
+    source: str | None = None,
     session: AsyncSession = Depends(get_db),
     ctx: RequestContext = Depends(require_permission("data:read")),
 ) -> ApiResponse:
     out = await data_service.get(
-        session, ctx, user_id, memory_field_name, mode=mode, query=query
+        session, ctx, user_id, memory_field_name, mode=mode, query=query, source=source
     )
     return ApiResponse(data=out)
 

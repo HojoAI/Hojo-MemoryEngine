@@ -58,6 +58,18 @@ public final class HttpTransport {
     return post(path, Map.of(), body, timeout);
   }
 
+  /** POST against an explicit API base (used by the V2 surface). */
+  public JsonNode postJsonAtBase(String baseUrl, String path, Object body, Duration timeout)
+      throws IOException, InterruptedException {
+    return sendAtBase("POST", baseUrl, path, Map.of(), body, timeout, true);
+  }
+
+  /** GET against an explicit API base (used by the V2 surface). */
+  public JsonNode getAtBase(String baseUrl, String path, Duration timeout)
+      throws IOException, InterruptedException {
+    return sendAtBase("GET", baseUrl, path, Map.of(), null, timeout, true);
+  }
+
   private JsonNode send(
       String method,
       String path,
@@ -66,7 +78,19 @@ public final class HttpTransport {
       Duration timeout,
       boolean map404ToNull)
       throws IOException, InterruptedException {
-    String url = config.getBaseUrl() + path + buildQuery(query);
+    return sendAtBase(method, config.getBaseUrl(), path, query, body, timeout, map404ToNull);
+  }
+
+  private JsonNode sendAtBase(
+      String method,
+      String baseUrl,
+      String path,
+      Map<String, String> query,
+      Object body,
+      Duration timeout,
+      boolean map404ToNull)
+      throws IOException, InterruptedException {
+    String url = baseUrl + path + buildQuery(query);
     HttpRequest.Builder builder =
         HttpRequest.newBuilder()
             .uri(URI.create(url))

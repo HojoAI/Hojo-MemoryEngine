@@ -61,6 +61,21 @@ async def chat_completion(
 
 async def embed_text(text: str) -> list[float]:
     """Create embedding vector."""
-    client = get_openai_client()
-    resp = await client.embeddings.create(model="text-embedding-3-small", input=text)
-    return list(resp.data[0].embedding)
+    return (await embed_texts([text]))[0]
+
+
+async def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Create embedding vectors in one provider request, preserving input order."""
+    if not texts:
+        return []
+    settings = get_settings()
+    client = build_openai_client(
+        base_url=settings.openai_embedding_api_base,
+        api_key=settings.openai_embedding_api_key or settings.openai_api_key,
+    )
+    resp = await client.embeddings.create(
+        model=settings.openai_embedding_model,
+        input=texts,
+    )
+    ordered = sorted(resp.data, key=lambda item: item.index)
+    return [list(item.embedding) for item in ordered]

@@ -10,6 +10,7 @@ from memory_engine.api.v1 import (
     governance_routes,
     internal_routes,
     llm_routes,
+    memory_candidate_routes,
     onboarding_routes,
     orchestration_routes,
     schema_changelog_routes,
@@ -27,6 +28,7 @@ api_router.include_router(schema_routes.router)
 api_router.include_router(data_routes.router)
 api_router.include_router(billing_routes.router)
 api_router.include_router(llm_routes.router)
+api_router.include_router(memory_candidate_routes.router)
 api_router.include_router(user_routes.router)
 api_router.include_router(orchestration_routes.router)
 api_router.include_router(governance_routes.router)

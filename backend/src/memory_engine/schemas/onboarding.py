@@ -45,7 +45,7 @@ class ApiKeyIssueResponse(BaseModel):
 
 
 class OnboardingProfileResponse(BaseModel):
-    """Current Supabase-linked Memory Engine user profile."""
+    """Current Supabase-linked MemoryEngine user profile."""
 
     tenant_id: int
     org_id: int

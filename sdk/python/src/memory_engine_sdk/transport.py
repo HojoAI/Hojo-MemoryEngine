@@ -7,6 +7,19 @@ def base_url() -> str:
     return os.environ.get("MEMORY_ENGINE_API_BASE", "http://127.0.0.1:6030/api/v1")
 
 
+def v2_base_url() -> str:
+    """Return the V2 API root while keeping existing V1 configuration compatible."""
+    explicit = os.environ.get("MEMORY_ENGINE_API_V2_BASE", "").strip()
+    if explicit:
+        return explicit.rstrip("/")
+    current = base_url().rstrip("/")
+    if current.endswith("/api/v1"):
+        return current[:-1] + "2"
+    if current.endswith("/api/v2"):
+        return current
+    return current + "/api/v2"
+
+
 def headers() -> dict[str, str]:
     h: dict[str, str] = {
         "X-Tenant-Id": os.environ.get("MEMORY_ENGINE_TENANT_ID", "1"),

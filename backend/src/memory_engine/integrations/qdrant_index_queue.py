@@ -46,6 +46,19 @@ async def _worker_loop() -> None:
                     task.doc_id,
                     task.text,
                 )
+        except RuntimeError as exc:
+            if "qdrant unavailable" in str(exc).lower():
+                logger.warning(
+                    "qdrant index skipped tenant=%s field=%s",
+                    task.tenant_id,
+                    task.memory_field_name,
+                )
+            else:
+                logger.exception(
+                    "qdrant index failed tenant=%s field=%s",
+                    task.tenant_id,
+                    task.memory_field_name,
+                )
         except Exception:
             logger.exception(
                 "qdrant index failed tenant=%s field=%s",

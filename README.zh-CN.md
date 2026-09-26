@@ -6,6 +6,16 @@
 
 Hojo Memory Engine 是为 AI Agent 设计的长期记忆层。它把分散在对话、文档、会议、业务系统里的上下文，沉淀成可定义、可检索、可引用、可治理的 **memory asset**。
 
+## 本次开源更新：连续会议记忆与可审计演进
+
+- **记忆增强的会议纪要**：纪要模块可引用历次会议的决议、变化原因、待办负责人和未关闭风险，并标明来源。
+- **跨会议状态更新**：V2 原子 Claim 保留来源会议、事实状态和版本历史；明确的决议或纠正可替代旧状态，提议不会被误当成最终决议。
+- **有边界的检索**：按项目 namespace、模块、场景、角色及敏感度过滤后，再进行语义、词法和多问题面召回；返回证据和检索轨迹。
+- **自进化 RSI 闭环**：候选提取与比较 → 冲突/质量信号 → 人工审核及规则版本更新 → 同一评测集回归。这里的 RSI 指 *Recursive Self-Improvement*；当前实现保留审核与回滚，规则不会自行改写。
+- **评测适配**：提供 Agent Memory Leaderboard 的 Add/Search 证据接口和相关回归测试。
+
+[V2 Claim API](./backend/docs/MEMORY_CLAIMS_V2.md) · [AML 适配](./docs/AML.md)
+
 在 Agent 应用里，模型能力可以替换，工具链可以替换，真正会持续变厚的是用户与 Agent 之间长期积累的 context。**Memory is the new moat.**
 
 ## 为什么选择 Hojo Memory Engine
@@ -17,7 +27,7 @@ Hojo Memory Engine 是为 AI Agent 设计的长期记忆层。它把分散在对
 - 简单 memory middleware 能写入和读取记忆，但 schema、权限、审计、回滚、计费、长期治理通常留给业务方自己补。
 - 当 Agent 从个人玩具进入生产环境，记忆会变成系统资产。没有定义权和治理权，Agent 越聪明，风险越难控。
 
-下表从**使用方与业务团队**视角对比常见方案（内容参考 [内部设计文档](https://k0z3fcmwg0v.feishu.cn/docx/MPHJdPT0OoSIBoxbiFEcWPlEnag) 中的行业对比）：
+下表从**使用方与业务团队**视角对比常见方案：
 
 | 维度 | Hojo Memory Engine | MemoryOS（北邮开源） | mem0 | RAG / 向量库 |
 | --- | --- | --- | --- | --- |
@@ -99,7 +109,7 @@ Dreaming 是后台治理任务，用来分析记忆质量、发现可合并或�
 
 ```bash
 git clone <repo-url>
-cd hojoai-omniasst-memoryOS
+cd Hojo-MemoryEngine
 cp .env.example .env
 ```
 

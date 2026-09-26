@@ -6,19 +6,31 @@ from datetime import datetime, timezone
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo import ReturnDocument
 
 from memory_engine.config import get_settings
 from memory_engine.constants.user_memory_item import (
     KB_MEMORY_FIELDS,
+    MEETING_MEMORY_FIELDS,
     MEMORY_FIELD_TO_DIMENSION,
+    SCHEDULE_MEMORY_FIELDS,
     MemorySourceType,
 )
 
 _client: AsyncIOMotorClient | None = None
 
 
-def _doc_id(tenant_id: int, org_id: int, user_id: str, memory_field_name: str) -> str:
+def _doc_id(
+    tenant_id: int,
+    org_id: int,
+    user_id: str,
+    memory_field_name: str,
+    source: str | None = None,
+) -> str:
     raw = f"{tenant_id}:{org_id}:{user_id}:{memory_field_name}"
+    # Non-empty source gets its own door; None/empty keeps legacy id (no source suffix).
+    if source:
+        raw = f"{raw}:{source}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -31,14 +43,33 @@ async def get_db() -> AsyncIOMotorDatabase:
     return _client[get_settings().mongodb_database]
 
 
+_SOURCE_UNSET: Any = object()
+
+
 async def get_memory_data(
-    tenant_id: int, org_id: int, user_id: str, memory_field_name: str
+    tenant_id: int,
+    org_id: int,
+    user_id: str,
+    memory_field_name: str,
+    source: str | None | Any = _SOURCE_UNSET,
 ) -> dict[str, Any] | None:
-    """Fetch one memory data document."""
+    """Fetch one memory data document.
+
+    Omit ``source`` to skip source filtering. Pass ``source=None`` to match
+    docs with missing/null source.
+    """
     db = await get_db()
-    doc = await db.memory_data.find_one(
-        {"_id": _doc_id(tenant_id, org_id, user_id, memory_field_name), "deleted": 0}
-    )
+    query: dict[str, Any] = {
+        "_id": _doc_id(
+            tenant_id,
+            org_id,
+            user_id,
+            memory_field_name,
+            source=None if source is _SOURCE_UNSET else source,
+        ),
+        "deleted": 0,
+    }
+    doc = await db.memory_data.find_one(query)
     return doc
 
 
@@ -51,10 +82,12 @@ async def upsert_memory_data(
     *,
     match_method: str = "OVERWRITE",
     source: str | None = None,
+    original_expression: str | None = None,
 ) -> dict[str, Any]:
     """Upsert memory data with OVERWRITE/APPEND/MERGE (MERGE fusion is applied upstream)."""
     db = await get_db()
-    doc_id = _doc_id(tenant_id, org_id, user_id, memory_field_name)
+    doc_id = _doc_id(tenant_id, org_id, user_id, memory_field_name, source=source)
+    # None matches both missing and null source fields in MongoDB.
     existing = await db.memory_data.find_one({"_id": doc_id})
     now = datetime.now(timezone.utc).isoformat()
 
@@ -70,7 +103,7 @@ async def upsert_memory_data(
         # MERGE fusion is handled in memory_data service (LLM via merge_rule) before upsert.
         new_value = value
 
-    doc = {
+    doc: dict[str, Any] = {
         "_id": doc_id,
         "tenant_id": tenant_id,
         "org_id": org_id,
@@ -82,12 +115,69 @@ async def upsert_memory_data(
     }
     if source is not None:
         doc["source"] = source
-    elif existing is not None and existing.get("source"):
-        doc["source"] = existing["source"]
-    if existing is None:
+    # elif existing is not None and existing.get("source"):
+    #     doc["source"] = existing["source"]
+
+    if existing is None or existing.get("deleted") == 1:
         doc["create_time"] = now
+    else:
+        if existing.get("create_time"):
+            doc["create_time"] = existing["create_time"]
+        if existing.get("recently_used"):
+            doc["recently_used"] = existing["recently_used"]
+
+    if original_expression is not None and str(original_expression).strip():
+        doc["original_expression"] = str(original_expression).strip()
+    elif existing is not None and existing.get("original_expression"):
+        doc["original_expression"] = existing["original_expression"]
+
     await db.memory_data.replace_one({"_id": doc_id}, doc, upsert=True)
     return doc
+
+
+async def mark_memory_data_recently_used(
+    tenant_id: int,
+    org_id: int,
+    user_id: str,
+    *,
+    recently_used: str,
+    memory_field_names: list[str] | None = None,
+    item_ids: list[str] | None = None,
+) -> int:
+    """Set ``recently_used`` on matching non-deleted memory_data documents."""
+    db = await get_db()
+    clauses: list[dict[str, Any]] = []
+    names = [n.strip() for n in (memory_field_names or []) if n and n.strip()]
+    ids = [i.strip() for i in (item_ids or []) if i and i.strip()]
+    if names:
+        clauses.append(
+            {
+                "tenant_id": tenant_id,
+                "org_id": org_id,
+                "user_id": user_id,
+                "deleted": 0,
+                "memory_field_name": {"$in": names},
+            }
+        )
+    if ids:
+        clauses.append(
+            {
+                "tenant_id": tenant_id,
+                "org_id": org_id,
+                "user_id": user_id,
+                "deleted": 0,
+                "_id": {"$in": ids},
+            }
+        )
+    if not clauses:
+        return 0
+    query: dict[str, Any] = clauses[0] if len(clauses) == 1 else {"$or": clauses}
+    # Do not bump updated_at — detail 「时间」 stays content write time.
+    result = await db.memory_data.update_many(
+        query,
+        {"$set": {"recently_used": recently_used}},
+    )
+    return int(result.modified_count)
 
 
 def _memory_data_user_query(
@@ -262,6 +352,30 @@ def _source_filter_clause(source: str | None) -> dict[str, Any] | None:
                 },
             ]
         }
+    if src == MemorySourceType.SCHEDULE.value:
+        return {
+            "$or": [
+                {"source": MemorySourceType.SCHEDULE.value},
+                {
+                    "$and": [
+                        {"source": {"$exists": False}},
+                        {"memory_field_name": {"$in": list(SCHEDULE_MEMORY_FIELDS)}},
+                    ]
+                },
+            ]
+        }
+    if src == MemorySourceType.MEETING.value:
+        return {
+            "$or": [
+                {"source": MemorySourceType.MEETING.value},
+                {
+                    "$and": [
+                        {"source": {"$exists": False}},
+                        {"memory_field_name": {"$in": list(MEETING_MEMORY_FIELDS)}},
+                    ]
+                },
+            ]
+        }
     if src == MemorySourceType.DIALOGUE.value:
         return {
             "$or": [
@@ -270,6 +384,8 @@ def _source_filter_clause(source: str | None) -> dict[str, Any] | None:
                     "$and": [
                         {"source": {"$exists": False}},
                         {"memory_field_name": {"$nin": list(KB_MEMORY_FIELDS)}},
+                        {"memory_field_name": {"$nin": list(SCHEDULE_MEMORY_FIELDS)}},
+                        {"memory_field_name": {"$nin": list(MEETING_MEMORY_FIELDS)}},
                     ]
                 },
             ]
@@ -288,7 +404,7 @@ def _memory_data_user_list_query(
     start_time: str | None = None,
     end_time: str | None = None,
 ) -> dict[str, Any]:
-    """Build Mongo filter for end-user list (memory_data granularity)."""
+    """Build Mongo filter for H5 user list (memory_data granularity)."""
     base = _memory_data_user_query(tenant_id, org_id, user_id)
     clauses: list[dict[str, Any]] = [base]
     dim_clause = _dimension_filter_clause(dimension)
@@ -336,7 +452,7 @@ async def count_memory_data_for_user_filtered(
     start_time: str | None = None,
     end_time: str | None = None,
 ) -> int:
-    """Count active memory_data rows matching end-user list filters."""
+    """Count active memory_data rows matching H5 list filters."""
     db = await get_db()
     query = _memory_data_user_list_query(
         tenant_id,
@@ -366,7 +482,7 @@ async def list_memory_data_for_user_filtered(
     sort_field: str = "updated_at",
     sort_desc: bool = True,
 ) -> list[dict[str, Any]]:
-    """List active memory_data rows with end-user list filters."""
+    """List active memory_data rows with H5 list filters."""
     db = await get_db()
     query = _memory_data_user_list_query(
         tenant_id,
@@ -409,15 +525,74 @@ async def get_memory_data_by_id(
 
 
 async def soft_delete_memory_data(
-    tenant_id: int, org_id: int, user_id: str, memory_field_name: str
+    tenant_id: int,
+    org_id: int,
+    user_id: str,
+    memory_field_name: str,
+    source: str | None = None,
 ) -> bool:
-    """Soft-delete memory data."""
+    """Soft-delete memory data for one field (+ optional source)."""
     db = await get_db()
     result = await db.memory_data.update_one(
-        {"_id": _doc_id(tenant_id, org_id, user_id, memory_field_name), "deleted": 0},
+        {
+            "_id": _doc_id(tenant_id, org_id, user_id, memory_field_name, source=source),
+            "deleted": 0,
+        },
         {"$set": {"deleted": 1, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
     return result.modified_count > 0
+
+
+async def soft_delete_memory_data_by_id(
+    tenant_id: int,
+    org_id: int,
+    user_id: str,
+    doc_id: str,
+) -> dict[str, Any] | None:
+    """Soft-delete one active memory_data document by ``_id``; return prior doc or None."""
+    db = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    doc = await db.memory_data.find_one_and_update(
+        {
+            "_id": doc_id,
+            "tenant_id": tenant_id,
+            "org_id": org_id,
+            "user_id": user_id,
+            "deleted": 0,
+        },
+        {"$set": {"deleted": 1, "updated_at": now}},
+        return_document=ReturnDocument.BEFORE,
+    )
+    return doc
+
+
+async def update_memory_data_value_by_id(
+    tenant_id: int,
+    org_id: int,
+    user_id: str,
+    doc_id: str,
+    value: Any,
+    *,
+    original_expression: str | None = None,
+) -> dict[str, Any] | None:
+    """Overwrite ``value`` on one active memory_data document by ``_id``."""
+    db = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    updates: dict[str, Any] = {"value": value, "updated_at": now, "deleted": 0}
+    if original_expression is not None:
+        updates["original_expression"] = original_expression
+    result = await db.memory_data.find_one_and_update(
+        {
+            "_id": doc_id,
+            "tenant_id": tenant_id,
+            "org_id": org_id,
+            "user_id": user_id,
+            "deleted": 0,
+        },
+        {"$set": updates},
+        return_document=ReturnDocument.AFTER,
+    )
+    return result
 
 
 async def soft_delete_all_memory_data_for_user(

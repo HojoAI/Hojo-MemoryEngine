@@ -25,12 +25,14 @@ public final class MemoryEngine {
   private final HttpTransport http;
   private final Schema schema;
   private final Data data;
+  private final MemoryV2 memory;
 
   public MemoryEngine(MemoryEngineConfig config) {
     this.config = config;
     this.http = new HttpTransport(config);
     this.schema = new Schema(http);
     this.data = new Data(http);
+    this.memory = new MemoryV2(http);
   }
 
   public static MemoryEngine fromEnvironment() {
@@ -52,6 +54,11 @@ public final class MemoryEngine {
 
   public Data data() {
     return data;
+  }
+
+  /** Atomic claims, project namespaces, access control, and audited retrieval. */
+  public MemoryV2 memory() {
+    return memory;
   }
 
   public HttpTransport http() {

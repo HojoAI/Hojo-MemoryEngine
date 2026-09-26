@@ -15,6 +15,7 @@ uv pip install -e .
 | 变量 | 说明 |
 |------|------|
 | `MEMORY_ENGINE_API_BASE` | API 根路径，如 `http://127.0.0.1:6030/api/v1` |
+| `MEMORY_ENGINE_API_V2_BASE` | 可选的 V2 根路径；未设置时从 V1 路径推导 `/api/v2` |
 | `MEMORY_ENGINE_API_KEY` | 申请 Key 时返回的**完整密钥**（Bearer，**必填**） |
 | `MEMORY_ENGINE_API_KEY_PREFIX` | 可选；Dashboard「前缀」列。未设置时由完整 Key 前 16 字符自动推导 |
 | `MEMORY_ENGINE_TENANT_ID` / `MEMORY_ENGINE_ORG_ID` | 租户与组织 |
@@ -35,6 +36,22 @@ print(memory_user_id())
 ### LLM 凭证
 
 解析与 `SEARCHENUM.LLM` 的 Schema 查找使用 **API 服务** 环境变量 `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL`。**不要在 SDK 的 parse 规则里配置 API Key**；`RetrieveRule` / `Data.call` 仍可通过 `LLM(...)` 按请求覆盖。
+
+## V2 原子会议记忆
+
+`Memory` 提供 `ingest`、`retrieve`、`call`、`history`、`revoke` 和 `resolve`。`retrieve` 返回经过权限过滤且带会议来源的 `MemoryBundle`。接口说明见 [V2 Claim API](../../backend/docs/MEMORY_CLAIMS_V2.md)。
+
+```python
+from memory_engine_sdk import Memory, MemoryClaim, MemoryNamespace, MemorySourceEvent
+
+ns = MemoryNamespace(type="product_project", id="demo")
+result = Memory.ingest(
+    "user-1", ns,
+    MemorySourceEvent(source_type="meeting", meeting_id="M1", raw_text="预算上限100万元"),
+    [MemoryClaim(dimension="project", claim_type="decision", claim_key="budget",
+                 value="100万元", text="预算上限100万元", fact_status="decision")],
+)
+```
 
 ## Schema 查询模式
 

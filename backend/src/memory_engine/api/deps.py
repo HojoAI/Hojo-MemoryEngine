@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import bcrypt
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +14,7 @@ from memory_engine.core.context import RequestContext
 from memory_engine.core.exceptions import ForbiddenError
 from memory_engine.core.user_api_errors import UserApiError
 from memory_engine.core.permissions import permission_granted
-from memory_engine.db.session import get_db
+from memory_engine.db.session import get_db, release_db_connection
 from memory_engine.models.auth import ApiKey
 from memory_engine.services.user_token_auth import validate_user_token
 from memory_engine.services.end_user_memory import resolve_end_user_tenant_org
@@ -161,3 +161,55 @@ async def require_end_user(
         tenant_id=tenant_id,
         org_id=org_id,
     )
+
+
+async def get_aml_request_context(
+    session: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+    x_api_key: str | None = Header(None, alias="X-Api-Key"),
+) -> RequestContext:
+    """Authenticate AML using any scheme allowed by its Add/Search contract."""
+    settings = get_settings()
+    if settings.app_disable_auth:
+        return RequestContext(tenant_id=1, org_id=0)
+
+    raw_key = (x_api_key or "").strip()
+    if authorization:
+        scheme, separator, value = authorization.partition(" ")
+        if separator and scheme.lower() in {"bearer", "token"}:
+            raw_key = value.strip()
+    if len(raw_key) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"reason": "Missing or invalid Memory System Key"},
+        )
+
+    prefix = raw_key[:16] if len(raw_key) >= 16 else raw_key[:8]
+    result = await session.execute(
+        select(ApiKey).where(ApiKey.key_prefix == prefix, ApiKey.deleted == 0)
+    )
+    row = result.scalar_one_or_none()
+    invalid = (
+        row is None
+        or row.revoked_at is not None
+        or (row.expires_at and row.expires_at < datetime.utcnow())
+        or not _verify_api_key(raw_key, row.key_hash)
+    )
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"reason": "Invalid Memory System Key"},
+        )
+
+    ctx = RequestContext(
+        tenant_id=row.tenant_id,
+        org_id=row.org_id,
+        user_id=row.user_id,
+        api_key_id=row.id,
+    )
+    if row.permissions_json:
+        permissions = row.permissions_json.get("allow", [])
+        if isinstance(permissions, list):
+            ctx.permissions = {str(permission) for permission in permissions}
+    await release_db_connection(session)
+    return ctx

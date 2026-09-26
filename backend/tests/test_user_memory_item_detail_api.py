@@ -45,13 +45,19 @@ def _end_user_headers() -> dict[str, str]:
 
 @pytest.mark.asyncio
 async def test_user_detail_requires_item_id() -> None:
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get(
-            "/api/v1/data/user/detail",
-            headers=_end_user_headers(),
-        )
-    assert resp.status_code == 422
+    with patch(
+        "memory_engine.api.deps.resolve_end_user_tenant_org",
+        new_callable=AsyncMock,
+        return_value=(1, 0),
+    ):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/data/user/detail",
+                headers=_end_user_headers(),
+            )
+    assert resp.status_code == 200
+    assert resp.json()["resCode"] == "ILLEGAL_ARGUMENT"
 
 
 @pytest.mark.asyncio

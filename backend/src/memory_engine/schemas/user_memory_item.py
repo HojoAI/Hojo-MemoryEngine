@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from memory_engine.constants.user_memory_item import (
+    MEMORY_GENERATION_METHOD_LABELS,
     MEMORY_SOURCE_DETAIL_LABELS,
     MEMORY_SOURCE_LABELS,
     MEMORY_STATUS_DETAIL_LABELS,
@@ -19,13 +20,13 @@ from memory_engine.constants.user_memory_item import (
 
 
 class UserMemoryItemOut(BaseModel):
-    """One personal memory row for end-user list (one memory_data document)."""
+    """One personal memory row for H5 list (one memory_data document)."""
 
     item_id: str
     user_id: str
     dimension: str = Field(..., description="background | social | goal | habit | dislike")
     dimension_label: str = Field(..., description="UI label, e.g. 背景知识")
-    source: str = Field(..., description="dialogue | knowledge")
+    source: str = Field(..., description="dialogue | knowledge | meeting | schedule")
     source_label: str = Field(..., description="UI label, e.g. 对话")
     status: str = Field(..., description="confirmed | pending")
     status_label: str = Field(..., description="UI label, e.g. 已确认")
@@ -38,7 +39,7 @@ class UserMemoryItemOut(BaseModel):
 
 
 class UserMemoryItemListPage(BaseModel):
-    """Paginated list with offset/limit metadata."""
+    """Paginated list with offset and limit metadata."""
 
     page_id: int = Field(..., serialization_alias="pageId")
     page_size: int = Field(..., serialization_alias="pageSize")
@@ -56,12 +57,22 @@ class UserMemoryGenerationBasisOut(BaseModel):
     source: str
     source_label: str = Field(..., serialization_alias="sourceLabel")
     record_time: str = Field(..., serialization_alias="recordTime")
+    generation_method: str | None = Field(
+        None,
+        serialization_alias="generationMethod",
+        description="生成方式文案，由 module source 映射",
+    )
+    original_expression: str | None = Field(
+        None,
+        serialization_alias="originalExpression",
+        description="原始表达：与记忆相关的原文子串",
+    )
 
     model_config = {"populate_by_name": True}
 
 
 class UserMemoryItemDetailOut(BaseModel):
-    """Memory detail for end-user detail page."""
+    """Memory detail for H5 detail page."""
 
     item_id: str = Field(..., serialization_alias="itemId")
     user_id: str = Field(..., serialization_alias="userId")
@@ -73,6 +84,11 @@ class UserMemoryItemDetailOut(BaseModel):
     time: str = Field(..., description="Display time from updated_at, YYYY-MM-DD HH:mm")
     memory_field_name: str = Field(..., serialization_alias="memoryFieldName")
     sensitive: bool | None = None
+    recently_used: str | None = Field(
+        None,
+        serialization_alias="recentlyUsed",
+        description="最近使用场景文案，如 用于对话",
+    )
     generation_basis: UserMemoryGenerationBasisOut = Field(
         ..., serialization_alias="generationBasis"
     )
@@ -92,7 +108,7 @@ def format_memory_value(value: Any) -> str:
 
 
 def _parse_iso_datetime(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone()
 
 
 def format_display_time(iso_str: str) -> str:
@@ -126,8 +142,8 @@ def build_item_out(doc: dict[str, Any]) -> UserMemoryItemOut:
         memory_field_name=memory_field_name,
         source_detail=None,
         sensitive=False,
-        created_at=created_at,
-        updated_at=updated_at,
+        created_at=format_record_date(created_at),
+        updated_at=format_display_time(updated_at),
     )
 
 
@@ -139,6 +155,16 @@ def build_item_detail_out(doc: dict[str, Any]) -> UserMemoryItemDetailOut:
     status = MemoryItemStatus.CONFIRMED.value
     create_time = doc.get("create_time") or doc.get("updated_at") or ""
     updated_at = doc.get("updated_at") or create_time
+    original_expression = doc.get("original_expression")
+    if isinstance(original_expression, str):
+        original_expression = original_expression.strip() or None
+    else:
+        original_expression = None
+    recently_used = doc.get("recently_used")
+    if isinstance(recently_used, str):
+        recently_used = recently_used.strip() or None
+    else:
+        recently_used = None
     return UserMemoryItemDetailOut(
         item_id=doc["_id"],
         user_id=doc["user_id"],
@@ -150,11 +176,14 @@ def build_item_detail_out(doc: dict[str, Any]) -> UserMemoryItemDetailOut:
         time=format_display_time(updated_at),
         memory_field_name=memory_field_name,
         sensitive=None,
+        recently_used=recently_used,
         generation_basis=UserMemoryGenerationBasisOut(
             source=source,
             source_label=MEMORY_SOURCE_DETAIL_LABELS.get(
                 source, MEMORY_SOURCE_LABELS.get(source, source)
             ),
             record_time=format_record_date(create_time),
+            generation_method=MEMORY_GENERATION_METHOD_LABELS.get(source),
+            original_expression=original_expression,
         ),
     )

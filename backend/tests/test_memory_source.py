@@ -92,11 +92,9 @@ def test_normalize_memory_source_rejects_invalid() -> None:
         normalize_memory_source("invalid")
 
 
-def test_normalize_memory_source_rejects_legacy_pa_sources() -> None:
-    with pytest.raises(ValueError):
-        normalize_memory_source("schedule")
-    with pytest.raises(ValueError):
-        normalize_memory_source("meeting")
+def test_normalize_memory_source_accepts_meeting_and_schedule() -> None:
+    assert normalize_memory_source("meeting") == MemorySourceType.MEETING.value
+    assert normalize_memory_source("schedule") == MemorySourceType.SCHEDULE.value
 
 
 def test_resolve_default_source_knowledge_field() -> None:

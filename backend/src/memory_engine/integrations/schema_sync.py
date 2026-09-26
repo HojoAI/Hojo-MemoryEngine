@@ -55,7 +55,7 @@ async def publish_memory_field_change(
         return
 
     message = {
-        "source": "memory-engine-api",
+        "source": "memory_engine-api",
         "event_id": f"api:memory_field:{tenant_id}:{org_id}:{memory_field_name}:{uuid.uuid4()}",
         "database": get_settings().canal_mysql_database,
         "table": "memory_field",
@@ -85,7 +85,7 @@ async def publish_rule_change(
     if not _api_publish_enabled():
         return
     message = {
-        "source": "memory-engine-api",
+        "source": "memory_engine-api",
         "event_id": f"api:{table}:{tenant_id}:{org_id}:{memory_field_name}:{uuid.uuid4()}",
         "database": get_settings().canal_mysql_database,
         "table": table,

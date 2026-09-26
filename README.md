@@ -6,6 +6,16 @@
 
 Hojo Memory Engine is a long-term memory layer for AI agents. It turns context scattered across conversations, documents, meetings, and business systems into **memory assets** that are definable, retrievable, referenceable, and governable.
 
+## This release: continuous meeting memory
+
+- **Memory-enhanced meeting minutes:** a minutes module can cite earlier decisions, reasons for changes, task owners, and open risks.
+- **Cross-meeting state:** V2 atomic claims retain meeting provenance and revision history. Decisions and corrections can supersede older facts; proposals remain distinct.
+- **Policy-aware retrieval:** namespace, module, scenario, role, and sensitivity checks run before semantic and lexical recall. Responses include evidence and a retrieval trace.
+- **Review-gated RSI:** candidate extraction and comparison, conflict signals, human review, versioned rule changes, and repeatable evaluation form a Recursive Self-Improvement loop. Rules do not rewrite themselves.
+- **Evaluation adapters:** Agent Memory Leaderboard Add/Search evidence endpoints and regression tests.
+
+See the [V2 claim API](./backend/docs/MEMORY_CLAIMS_V2.md) and [AML adapter](./docs/AML.md).
+
 In agent applications, model capabilities and toolchains can be swapped—but what keeps compounding is the context accumulated between users and agents over time. **Memory is the new moat.**
 
 ## Why Hojo Memory Engine
@@ -17,7 +27,7 @@ Many agent demos appear to “have memory,” but real workflows expose a gap:
 - Simple memory middleware can read and write, but schema, permissions, audit, rollback, billing, and long-term governance are left to product teams.
 - As agents move from toys to production, memory becomes a system asset. Without definition and governance, smarter agents mean harder-to-control risk.
 
-The table below compares common approaches from a **user and product-team perspective** (source: [internal design doc](https://k0z3fcmwg0v.feishu.cn/docx/MPHJdPT0OoSIBoxbiFEcWPlEnag)):
+The table below compares common approaches from a **user and product-team perspective**:
 
 | Dimension | Hojo Memory Engine | MemoryOS (BUPT OSS) | mem0 | RAG / vector DB |
 | --- | --- | --- | --- | --- |
@@ -95,7 +105,7 @@ Dreaming runs background jobs to analyze memory quality, find merge/fix candidat
 
 ```bash
 git clone <repo-url>
-cd hojoai-omniasst-memoryOS
+cd Hojo-MemoryEngine
 cp .env.example .env
 ```
 

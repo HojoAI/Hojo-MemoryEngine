@@ -45,13 +45,13 @@ async def start_kafka_consumers() -> None:
         return
 
     groups: list[tuple[str, str, Handler]] = [
-        (settings.kafka_schema_changelog_topic, "memory-engine-schema-cache", handle_schema_changelog_message),
-        (settings.kafka_billing_events_topic, "memory-engine-billing", handle_billing_event_message),
+        (settings.kafka_schema_changelog_topic, "memory_engine-schema-cache", handle_schema_changelog_message),
+        (settings.kafka_billing_events_topic, "memory_engine-billing", handle_billing_event_message),
     ]
     if settings.canal_enabled:
         groups.insert(
             0,
-            (settings.kafka_canal_topic, "memory-engine-canal-binlog", handle_canal_binlog_message),
+            (settings.kafka_canal_topic, "memory_engine-canal-binlog", handle_canal_binlog_message),
         )
     for topic, group_id, handler in groups:
         consumer = AIOKafkaConsumer(

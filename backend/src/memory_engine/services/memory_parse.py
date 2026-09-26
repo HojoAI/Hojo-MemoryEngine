@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
@@ -10,15 +11,48 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from memory_engine.config import get_settings
 from memory_engine.core.context import RequestContext
+from memory_engine.db.session import release_db_connection
 from memory_engine.integrations import llm_client
 from memory_engine.schemas.memory_field import LLMConfig
 from memory_engine.models.schema import CapabilityRegistry
 from memory_engine.services import billing_service, rules as rule_service
 
+logger = logging.getLogger(__name__)
+
 _PARSE_SYSTEM = (
     "Extract structured memory from user text. Reply JSON only with fields requested "
     "in the task. Use null for unknown fields."
 )
+
+
+def format_monitor_value(value: Any) -> str:
+    """Pretty-print values for runtime monitor logs."""
+    if value is None:
+        return "（无）"
+    if isinstance(value, str):
+        return value if value.strip() else "（空字符串）"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, indent=2, default=str)
+    return str(value)
+
+
+def log_runtime_monitor(title: str, items: list[tuple[str, Any]]) -> None:
+    """Emit detailed runtime values only when explicitly enabled."""
+    if not get_settings().memory_runtime_monitor_enabled:
+        return
+    width = max(48, len(title) + 8)
+    bar = "═" * width
+    lines = [bar, f"【{title}】", bar]
+    for label, value in items:
+        formatted = format_monitor_value(value)
+        if "\n" in formatted:
+            lines.append(f"▸ {label}：")
+            for row in formatted.splitlines():
+                lines.append(f"    {row}")
+        else:
+            lines.append(f"▸ {label}：{formatted}")
+    lines.append(bar)
+    logger.info("\n%s", "\n".join(lines))
 
 # ``text``: store LLM body per user prompt (no JSON coercion). ``json``: legacy JSON parse.
 _VALID_OUTPUT_FORMATS = frozenset({"text", "json"})
@@ -68,7 +102,7 @@ def apply_parse_prompt_template(
     *,
     field: str,
     text: str,
-    language: str | None = None,
+    language: str = "en-US",
 ) -> str:
     """Substitute ``{field}``, ``{text}`` and ``{language}``; leave other braces (e.g. JSON) intact."""
     result = template.replace("{field}", field).replace("{text}", text)
@@ -185,7 +219,7 @@ async def _translate_value(
     if not value:
         return value
 
-    language = language or "en"
+    language = language or "en-US"
 
     # 纯字符串翻译
     if isinstance(value, str):
@@ -201,6 +235,7 @@ async def _translate_value(
             f"Output ONLY the translated text, no explanation, no extra formatting.\n\n"
             f"Text: {value}"
         )
+        await release_db_connection(session)
         raw, pt, ct = await llm_client.chat_completion(
             prompt,
             system="You are a translator. Output only the translated text, no explanation.",
@@ -245,6 +280,7 @@ async def _translate_value(
             f"Output ONLY the translated JSON array, no explanation, no markdown fences.\n\n"
             f"JSON:\n{json.dumps(payload, ensure_ascii=False)}"
         )
+        await release_db_connection(session)
         raw, pt, ct = await llm_client.chat_completion(
             prompt,
             system=(
@@ -313,17 +349,36 @@ async def parse_with_rule(
     rule_name: str | None,
     raw_query: str,
     extra: dict | None = None,
-    output_language: str | None = None,
+    output_language: str,
 ) -> Any:
     """Run LLM parse pipeline when parse_rule exists; else wrap query."""
-    
+
     if not rule_name:
-        raw_query = await _translate_value(raw_query, output_language or "en", session, ctx)
+        log_runtime_monitor(
+            "记忆解析 · 跳过 LLM",
+            [
+                ("记忆领域", memory_field_name),
+                ("原因", "未指定 parse_rule_name，仅翻译后包装 query"),
+                ("原始输入 query", raw_query),
+                ("目标语言", output_language),
+            ],
+        )
+        raw_query = await _translate_value(raw_query, output_language or "en-US", session, ctx)
         return {"query": raw_query, "extra": extra or {}}
 
     row = await rule_service.get_active_parse(session, ctx, memory_field_name, rule_name)
     if not row:
-        raw_query = await _translate_value(raw_query, output_language or "en", session, ctx)
+        log_runtime_monitor(
+            "记忆解析 · 跳过 LLM",
+            [
+                ("记忆领域", memory_field_name),
+                ("解析规则名", rule_name),
+                ("原因", "未找到有效 parse_rule，仅翻译后包装 query"),
+                ("原始输入 query", raw_query),
+                ("目标语言", output_language),
+            ],
+        )
+        raw_query = await _translate_value(raw_query, output_language or "en-US", session, ctx)
         return {"query": raw_query, "extra": extra or {}}
 
     cfg = dict(row.rule_config_json or {})
@@ -331,10 +386,10 @@ async def parse_with_rule(
         cap = await session.get(CapabilityRegistry, row.capability_id)
         if cap and cap.config_json:
             cap_cfg = cap.config_json
-            cfg = {**cap_cfg, **cfg} # 模型的一些配置来自capability，prompt来自rule_config_json，二者合并，rule_config_json优先级高（同名的key根据后者配置）
+            cfg = {**cap_cfg, **cfg} # 融合字典数据，冲突优先级右面高
             if "default_prompt_template" in cap_cfg and "prompt" not in cfg:
                 cfg["prompt"] = cap_cfg["default_prompt_template"]
-    output_format = parse_output_format(cfg) # 就是从配置里读output_format，决定LLM以什么格式返回结果
+    output_format = parse_output_format(cfg)
     prompt_template = cfg.get(
         "prompt",
         (
@@ -343,35 +398,59 @@ async def parse_with_rule(
             else "Extract memory for field '{field}'. User text:\n{text}\nOutput language: {language}\nReply JSON."
         ),
     )
-    # 把模板里的 {field}、{text}、{language} 替换成实际值
+    # 替换模板中的 {field}、{text}、{language}
     user_prompt = apply_parse_prompt_template(
         prompt_template,
         field=memory_field_name,
         text=raw_query,
-        language=output_language or "en",
+        language=output_language,
     )
-    
     model, base_url, api_key, llm_params = _resolve_parse_llm(cfg)
-    
     settings = get_settings()
     model = model or settings.openai_model
-    
+    system_message = parse_system_message(cfg, output_format=output_format)
+    log_runtime_monitor(
+        "记忆解析 · 调用 LLM 前",
+        [
+            ("记忆领域", memory_field_name),
+            ("原始输入 query", raw_query),
+            ("输出语言", output_language),
+            ("输出格式", output_format),
+            ("模型名称", model),
+            ("温度 temperature", llm_params.get("temperature", "（未设置，使用模型默认）")),
+            ("其他 llm_params", llm_params or "（无）"),
+            ("系统提示词 system", system_message or "（无）"),
+            ("用户提示词 prompt", user_prompt),
+        ],
+    )
+    # 调用LLM
+    await release_db_connection(session)
     raw, pt, ct = await llm_client.chat_completion(
         user_prompt,
-        system=parse_system_message(cfg, output_format=output_format),
+        system=system_message,
         base_url=base_url,
         api_key=api_key,
         model=model,
         llm_params=llm_params,
     )
-    
+
     await billing_service.emit_llm_completion(
         session, ctx, model_name=model, prompt_tokens=pt, completion_tokens=ct
     )
-    # 按output_format清洗成可存储的结果
-    return normalize_llm_parse_output(
+    parsed = normalize_llm_parse_output(
         raw,
         output_format=output_format,
         raw_query=raw_query,
         extra=extra,
     )
+    log_runtime_monitor(
+        "记忆解析 · 调用 LLM 后",
+        [
+            ("模型名称", model),
+            ("prompt_tokens", pt),
+            ("completion_tokens", ct),
+            ("模型原始输出", raw),
+            ("规范化后解析结果", parsed),
+        ],
+    )
+    return parsed

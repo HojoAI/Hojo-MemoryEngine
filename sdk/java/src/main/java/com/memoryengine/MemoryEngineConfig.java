@@ -90,6 +90,21 @@ public final class MemoryEngineConfig {
     return baseUrl.replace("/api/v1", "") + "/health";
   }
 
+  /** V2 API base, optionally overridden by {@code MEMORY_ENGINE_API_V2_BASE}. */
+  public String v2BaseUrl() {
+    String explicit = System.getenv("MEMORY_ENGINE_API_V2_BASE");
+    if (explicit != null && !explicit.isBlank()) {
+      return explicit.endsWith("/") ? explicit.substring(0, explicit.length() - 1) : explicit;
+    }
+    if (baseUrl.endsWith("/api/v1")) {
+      return baseUrl.substring(0, baseUrl.length() - "/api/v1".length()) + "/api/v2";
+    }
+    if (baseUrl.endsWith("/api/v2")) {
+      return baseUrl;
+    }
+    return baseUrl + "/api/v2";
+  }
+
   public static final class Builder {
     private String baseUrl = "http://127.0.0.1:6030/api/v1";
     private String apiKey = "";

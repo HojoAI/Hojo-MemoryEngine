@@ -1,6 +1,6 @@
 """Temporal worker entrypoint.
 
-Run: ``poetry run memory-engine-worker`` or ``python -m memory_engine.temporal.worker``
+Run: ``poetry run memory_engine-worker`` or ``python -m memory_engine.temporal.worker``
 """
 
 import asyncio
