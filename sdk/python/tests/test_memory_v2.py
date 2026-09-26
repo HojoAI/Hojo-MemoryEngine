@@ -1,4 +1,4 @@
-"""MemoryOS V2 SDK request and response contract tests."""
+"""Hojo Memory Engine V2 SDK request and response contract tests."""
 
 from unittest.mock import MagicMock
 
