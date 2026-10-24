@@ -6,6 +6,19 @@
 
 Hojo Memory Engine is a long-term memory layer for AI agents. It turns context scattered across conversations, documents, meetings, and business systems into **memory assets** that are definable, retrievable, referenceable, and governable.
 
+<a id="downloads"></a>
+
+## Download Hojo
+
+Experience Hojo on mobile and desktop. Choose your platform and service region.
+
+| Platform | Hojo CN<br>(Mainland China) | Hojo Global |
+| :--- | :---: | :---: |
+| **Android** | [Official Download][download-cn-android] | [Google Play][download-global-android] |
+| **iOS** | [App Store][download-cn-ios] | [App Store][download-global-ios] |
+| **macOS** | [Download][download-cn-macos] | [Download][download-global-macos] |
+| **Windows** | [Download][download-cn-windows] | [Download][download-global-windows] |
+
 ## This release: continuous meeting memory
 
 - **Memory-enhanced meeting minutes:** a minutes module can cite earlier decisions, reasons for changes, task owners, and open risks.
@@ -373,3 +386,12 @@ Together, these layers move Personal Agents from one-shot replies toward long-te
 ## License
 
 Apache License 2.0. See [LICENSE](./LICENSE).
+
+[download-cn-android]: https://www.hojoai.com/share/download?environment=domestic&lang=en-US
+[download-cn-ios]: https://apps.apple.com/app/id6773312722
+[download-cn-macos]: https://cdn.hojoai.com/download/apks/Hojo-domestic-release-1.3.0.dmg
+[download-cn-windows]: https://cdn.hojoai.com/download/apks/Hojo-domestic-release-setup-1.3.0.exe
+[download-global-android]: https://www.hojoai.com/share/download?environment=oversea&lang=en-US
+[download-global-ios]: https://apps.apple.com/app/id6760108275
+[download-global-macos]: https://cdn.hojoai.com/download/apks/Hojo-overseas-release-1.3.0.dmg
+[download-global-windows]: https://cdn.hojoai.com/download/apks/Hojo-overseas-release-setup-1.3.0.exe

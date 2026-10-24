@@ -6,6 +6,19 @@
 
 Hojo Memory Engine 是为 AI Agent 设计的长期记忆层。它把分散在对话、文档、会议、业务系统里的上下文，沉淀成可定义、可检索、可引用、可治理的 **memory asset**。
 
+<a id="downloads"></a>
+
+## 下载 Hojo
+
+在手机与电脑上体验 Hojo，选择适合你的设备与服务地区。
+
+| 平台 | Hojo CN<br>（中国大陆版） | Hojo Global<br>（国际版） |
+| :--- | :---: | :---: |
+| **Android** | [官方下载][download-cn-android] | [Google Play][download-global-android] |
+| **iOS** | [App Store][download-cn-ios] | [App Store][download-global-ios] |
+| **macOS** | [下载][download-cn-macos] | [下载][download-global-macos] |
+| **Windows** | [下载][download-cn-windows] | [下载][download-global-windows] |
+
 ## 本次开源更新：连续会议记忆与可审计演进
 
 - **记忆增强的会议纪要**：纪要模块可引用历次会议的决议、变化原因、待办负责人和未关闭风险，并标明来源。
@@ -384,3 +397,12 @@ Hojo Memory Engine 是 Hojo 技术栈中的记忆层：
 ## 许可证
 
 Apache License 2.0，详见 [LICENSE](./LICENSE)。
+
+[download-cn-android]: https://www.hojoai.com/share/download?environment=domestic
+[download-cn-ios]: https://apps.apple.com/app/id6773312722
+[download-cn-macos]: https://cdn.hojoai.com/download/apks/Hojo-domestic-release-1.3.0.dmg
+[download-cn-windows]: https://cdn.hojoai.com/download/apks/Hojo-domestic-release-setup-1.3.0.exe
+[download-global-android]: https://play.google.com/store/apps/details?id=com.hojoai.personalassistant
+[download-global-ios]: https://apps.apple.com/app/id6760108275
+[download-global-macos]: https://cdn.hojoai.com/download/apks/Hojo-overseas-release-1.3.0.dmg
+[download-global-windows]: https://cdn.hojoai.com/download/apks/Hojo-overseas-release-setup-1.3.0.exe
